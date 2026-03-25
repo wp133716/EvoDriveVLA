@@ -11,6 +11,7 @@ export NCCL_DEBUG=WARN
 export NCCL_IB_DISABLE=1
 export NCCL_P2P_DISABLE=0
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+#export CUDA_VISIBLE_DEVICES=0
 
 export MASTER_ADDR=localhost
 MASTER_PORT=$((10000 + RANDOM % 50000))
@@ -19,25 +20,27 @@ export MASTER_PORT=$MASTER_PORT
 DEFAULT_NUM_NODES=1
 DEFAULT_NUM_GPUS=8
 DEFAULT_MIN_IMAGE_SIZE="100352"
+#DEFAULT_MIN_IMAGE_SIZE="50176"
 DEFAULT_MAX_IMAGE_SIZE="200704"
+#DEFAULT_MAX_IMAGE_SIZE="100352"
 DEFAULT_MODEL_SIZE="3B"
 DEFAULT_MAX_TOKEN=4096
 
 #=============================================
 NUM_EPOCH=5
 
-TRAIN_TEACHER=True
+TRAIN_TEACHER=False
 
-ENCODER_KD=False
+ENCODER_KD=True
 ENCODER_WEIGHT=0.05
 
-LLM_KD=False
+LLM_KD=True
 
-LOGITS=False
+LOGITS=True
 LOGITS_WEIGHT=0.1
 LOGITS_TEMP=5
 
-HS=False
+HS=True
 HS_WEIGHT=0.2
 #=============================================
 
@@ -69,19 +72,19 @@ train_data="./data/nuscenes/Drive_KD_train_his_ego${PROMPT}.json"
 test_data="./data/nuscenes/Drive_KD_val_his_ego${PROMPT}.json"
 img_dir="./data"
 model="Qwen/Qwen2.5-VL-${DEFAULT_MODEL_SIZE}-Instruct"
-teacher_model="./result/evodrivevla/nuscenes/teacher_mdoel"
+teacher_model="./result/drivevla-kd/checkpoints/teacher_model_2026-03-24_09-53-02_3B_5epoch/checkpoint-5848"
 
 if [ "$TRAIN_TEACHER" = "True" ]; then
   train_data="./data/nuscenes/Drive_KD_train_his_ego_future.json"
   test_data="./data/nuscenes/Drive_KD_val_his_ego_future.json"
-  OUTPUT_DIR="./result/drivevla-kd/checkpoints/teacher_mdoel_${TIMESTAMP}_${DEFAULT_MODEL_SIZE}_${NUM_EPOCH}epoch"
+  OUTPUT_DIR="./result/drivevla-kd/checkpoints/teacher_model_${TIMESTAMP}_${DEFAULT_MODEL_SIZE}_${NUM_EPOCH}epoch"
 fi
 
 deepspeed --master_port $MASTER_PORT \
   --num_gpus ${NUM_GPUS} \
   --num_nodes ${NUM_NODES} \
   --module qwenvl.train.train_qwen_kd \
-  --deepspeed_config ./train/zero2.json \
+  --deepspeed ./train/zero2.json \
   --model_name_or_path ${model} \
   --output_dir ${OUTPUT_DIR} \
   --img_dir $img_dir \
