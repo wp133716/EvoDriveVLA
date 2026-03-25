@@ -69,13 +69,14 @@ class Qwen2_5_VLVisionConfig(PretrainedConfig):
 def apply_rotary_pos_emb_flashatt(
     q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    orig_dtype = q.dtype
     cos = cos.chunk(2, dim=-1)[0].contiguous()
     sin = sin.chunk(2, dim=-1)[0].contiguous()
     if q.dtype != cos.dtype:
         q = q.to(cos.dtype)
-        k = k.to(cos.dtype)    
-    q_embed = apply_rotary_emb(q, cos, sin).type_as(q)
-    k_embed = apply_rotary_emb(k, cos, sin).type_as(k)
+        k = k.to(cos.dtype)
+    q_embed = apply_rotary_emb(q, cos, sin).to(orig_dtype)
+    k_embed = apply_rotary_emb(k, cos, sin).to(orig_dtype)
     return q_embed, k_embed
 
 def apply_rotary_pos_emb_vision(
@@ -152,8 +153,8 @@ class Qwen2_5_VLVisionFlashAttention2(nn.Module):
         q, k, v = self.qkv(hidden_states).reshape(seq_length, 3, self.num_heads, -1).permute(1, 0, 2, 3).unbind(0)
         if position_embeddings is None:
             emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
-            cos = emb.cos().float()
-            sin = emb.sin().float()
+            cos = emb.cos().to(q.dtype)
+            sin = emb.sin().to(q.dtype)
         else:
             cos, sin = position_embeddings
         q, k = apply_rotary_pos_emb_flashatt(q.unsqueeze(0), k.unsqueeze(0), cos, sin)

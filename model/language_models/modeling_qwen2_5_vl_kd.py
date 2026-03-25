@@ -97,7 +97,7 @@ class AnchorFormer(nn.Module):
         
         num_visual = image_mask[0].sum().item()  
         B, _, C = hidden_states.shape
-        visual_hidden_states = torch.zeros(B, num_visual, C, device=hidden_states.device)
+        visual_hidden_states = torch.zeros(B, num_visual, C, device=hidden_states.device, dtype=hidden_states.dtype)
 
         for b in range(B):
             mask_b = image_mask[b]  # [N]
@@ -175,9 +175,8 @@ class Qwen2_5_VLForConditionalGeneration_KD(Qwen2Base):
                 attn_implementation=teacher_attn_implementation,
                 torch_dtype=torch.bfloat16,
                 low_cpu_mem_usage=True,
-                device_map="cuda",
+                device_map={"": torch.cuda.current_device()},
             )
-            self.teacher = self.teacher.to(device="cuda", dtype=torch.bfloat16)
             self.teacher.requires_grad_(False)
             self.teacher.eval()
 

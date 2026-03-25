@@ -97,7 +97,7 @@ def train():
         attn_implementation=training_args.attn_implementation,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
-        device_map="cuda",
+        device_map={"": training_args.local_rank},
         encoder_kd=training_args.encoder_kd,
         encoder_loss_weight=training_args.encoder_loss_weight,
         llm_kd=training_args.llm_kd,
@@ -107,15 +107,20 @@ def train():
         hs_loss=training_args.hs_loss,
         hs_loss_weight=training_args.hs_loss_weight,
         train_teacher=model_args.train_teacher,
-        
+
     )
-    model = model.to(device=f"cuda:{training_args.local_rank}", dtype=torch.bfloat16)
 
     model.init_teacher(
         teacher_model_name_or_path=model_args.teacher_model_name_or_path,
         teacher_cache_dir=training_args.cache_dir,
         teacher_attn_implementation=training_args.attn_implementation,
     )
+
+    # _from_config in __init__ re-creates self.visual in fp32, bypassing torch_dtype.
+    # Explicitly cast all non-teacher parameters to bfloat16.
+    for name, param in model.named_parameters():
+        if 'teacher' not in name and param.dtype == torch.float32:
+            param.data = param.data.to(torch.bfloat16)
 
     data_args.image_processor = AutoProcessor.from_pretrained(
         model_args.model_name_or_path,
