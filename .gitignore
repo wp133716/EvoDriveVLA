@@ -1,1 +1,6 @@
 **/__pycache__/
+data/metrics/
+data/nuscenes/
+data/*.json
+data/*.pkl
+result*
