@@ -57,7 +57,7 @@ def generate_user_message(args, data, token, perception_range=20.0, short=True):
             ]  
     images_path = []
     for cam in camera_types:
-        images_path.append(data_dict['cams'][cam]['data_path'].replace('/localdata_ssd/nuScenes', './data/nuscenes', 1))
+        images_path.append(data_dict['cams'][cam]['data_path'].replace('/localdata_ssd/nuScenes', 'nuscenes', 1))
     if args.future:
         future_cams = []
         sample = data_dict
@@ -66,12 +66,12 @@ def generate_user_message(args, data, token, perception_range=20.0, short=True):
                 break
             next_sample = data[sample['next']]
             if i % 2 == 1:
-                future_cams.append(next_sample['cams']['CAM_FRONT']['data_path'].replace('/localdata_ssd/nuScenes', './data/nuscenes', 1))  
+                future_cams.append(next_sample['cams']['CAM_FRONT']['data_path'].replace('/localdata_ssd/nuScenes', 'nuscenes', 1))  
             sample = next_sample
         
         if len(future_cams) < 3:
             for _ in range(1 - len(future_cams)):
-                future_cams.append(sample['cams']['CAM_FRONT']['data_path'].replace('/localdata_ssd/nuScenes', './data/nuscenes', 1))
+                future_cams.append(sample['cams']['CAM_FRONT']['data_path'].replace('/localdata_ssd/nuScenes', 'nuscenes', 1))
         images_path.extend(future_cams)
     if args.one_point:
         future_cams = []
@@ -80,7 +80,7 @@ def generate_user_message(args, data, token, perception_range=20.0, short=True):
             next_sample = sample
         else:
             next_sample = data[sample['next']]
-        future_cams.append(next_sample['cams']['CAM_FRONT']['data_path'].replace('/localdata_ssd/nuScenes', './data/nuscenes', 1))
+        future_cams.append(next_sample['cams']['CAM_FRONT']['data_path'].replace('/localdata_ssd/nuScenes', 'nuscenes', 1))
         images_path.extend(future_cams)
     """
     Historical Trjectory:
