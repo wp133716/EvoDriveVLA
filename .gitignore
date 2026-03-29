@@ -4,3 +4,4 @@ data/nuscenes/
 data/*.json
 data/*.pkl
 result*
+wandb/
