@@ -1,4 +1,5 @@
 export PYTHONWARNINGS="ignore::DeprecationWarning"
+export WANDB_PROJECT="EvoDriveVLA"
 export ALBUMENTATIONS_DISABLE_VERSION_CHECK=1
 export HF_HUB_DISABLE_TELEMETRY=1
 export TOKENIZERS_PARALLELISM=false
@@ -107,9 +108,9 @@ deepspeed --master_port $MASTER_PORT \
   --max_pixels ${DEFAULT_MAX_IMAGE_SIZE} \
   --min_pixels ${DEFAULT_MIN_IMAGE_SIZE} \
   --model_max_length ${DEFAULT_MAX_TOKEN} \
-  --report_to tensorboard \
+  --report_to wandb \
   --logging_steps 10 \
-  --logging_dir ${OUTPUT_DIR}/logs \
+  --run_name ${CHECKPOINT} \
   --save_safetensors False \
   --train_teacher ${TRAIN_TEACHER} \
   --teacher_model_name_or_path ${teacher_model} \
