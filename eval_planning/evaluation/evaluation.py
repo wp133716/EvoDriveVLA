@@ -170,7 +170,7 @@ if __name__ == "__main__":
     parser.add_argument('--method', type=str, help='name of the method being evaluated, used for table print', default='Drive_KD')
     parser.add_argument('--result_file', type=str, help='path to the result file')
     parser.add_argument('--save_file', type=str, help='path to the eval_result file')
-    parser.add_argument('--gt_folder', type=str, default='./data/nuscenes/data/metrics')
+    parser.add_argument('--gt_folder', type=str, default='./data/nuscenes/metrics')
     config = parser.parse_args()
 
     result_file = Path(config.result_file)
@@ -179,10 +179,10 @@ if __name__ == "__main__":
     stp3 = planning_evaluation_stp3(pred_trajs_dict, config)
     uniad = planning_evaluation_uniad(pred_trajs_dict, config)
     metric_result = {}
-    metric_result['stp3'] = {'L2(cm)': {'1s': stp3[1], '2s': stp3[2], '3s': stp3[3], 'Avg.': stp3[4]},
+    metric_result['stp3'] = {'L2(m)': {'1s': stp3[1], '2s': stp3[2], '3s': stp3[3], 'Avg.': stp3[4]},
                             'Collision(%)': {'1s': stp3[5], '2s': stp3[6], '3s': stp3[7], 'Avg.': stp3[8]},
                             }
-    metric_result['uniad'] = {'L2(cm)': {'1s': uniad[1], '2s': uniad[2], '3s': uniad[3], 'Avg.': uniad[4]},
+    metric_result['uniad'] = {'L2(m)': {'1s': uniad[1], '2s': uniad[2], '3s': uniad[3], 'Avg.': uniad[4]},
                             'Collision(%)': {'1s': uniad[5], '2s': uniad[6], '3s': uniad[7], 'Avg.': uniad[8]},
                             }
     print(json.dumps(metric_result, indent=4))
