@@ -470,6 +470,7 @@ def main():
     current_path = []  # 当前执行的路径 (Vector3r列表)
     path_start_time = 0  # 路径开始时间
     path_following = False  # 是否正在执行路径
+    current_waypoints_world = []  # 当前路径的世界坐标waypoints（用于日志可视化）
 
     mission_goal = determine_mission_goal(args.instruction)
     print(f"Instruction: {args.instruction}")
@@ -537,10 +538,30 @@ def main():
                 waypoints_ego = parse_waypoints(output_text)
 
                 if len(waypoints_ego) >= NUM_WAYPOINTS:
+                    # ========== 调试信息：检查模型输出 ==========
+                    print(f"\n[调试] Mission Goal: {mission_goal}")
+                    print(f"[调试] 参考位置: ({ref_position[0]:.1f}, {ref_position[1]:.1f}), 朝向: {ref_yaw:.1f}°")
+                    print(f"[调试] 模型输出的自车坐标 waypoints (前3个):")
+                    for i, wp in enumerate(waypoints_ego[:3]):
+                        print(f"  WP[{i}]: ({wp[0]:.2f}, {wp[1]:.2f}, {wp[2]:.2f})")
+
+                    # 检查X坐标符号是否符合预期
+                    avg_x = sum(wp[0] for wp in waypoints_ego[:NUM_WAYPOINTS]) / NUM_WAYPOINTS
+                    print(f"[调试] Waypoints X坐标平均值: {avg_x:.2f}")
+                    if mission_goal == "RIGHT" and avg_x < 0:
+                        print("  ⚠️ 警告: Mission Goal=RIGHT 但 waypoints X < 0 (应该是右/正)")
+                    elif mission_goal == "LEFT" and avg_x > 0:
+                        print("  ⚠️ 警告: Mission Goal=LEFT 但 waypoints X > 0 (应该是左/负)")
+                    # =============================================
+
                     # 转换到世界坐标
                     waypoints_world = waypoints_ego_to_world(
                         waypoints_ego[:NUM_WAYPOINTS], ref_position, ref_yaw
                     )
+
+                    print(f"[调试] 转换后的世界坐标 waypoints (前3个):")
+                    for i, wp in enumerate(waypoints_world[:3]):
+                        print(f"  WP[{i}]: ({wp[0]:.1f}, {wp[1]:.1f}, {wp[2]:.1f})")
 
                     # 构建路径 (添加当前位置作为起点)
                     path = [airsim.Vector3r(current.pos_x, current.pos_y, current.pos_z)]
@@ -574,15 +595,18 @@ def main():
 
                     # 更新状态
                     current_path = path
+                    current_waypoints_world = waypoints_world  # 保存用于后续日志
                     path_following = True
                     path_start_time = time.time()
                     last_infer_time = time.time()
                     infer_count += 1
 
-                    # 记录日志
+                    # 记录日志（与 visualize_log.py 兼容的格式）
                     log_entry = {
                         "step": step,
                         "infer_count": infer_count,
+                        "pos": [current.pos_x, current.pos_y, current.pos_z],  # 当前位置
+                        "target": [waypoints_world[0][0], waypoints_world[0][1], waypoints_world[0][2]],  # 第一个目标点
                         "ref_position": ref_position,
                         "ref_yaw": ref_yaw,
                         "waypoints_ego": waypoints_ego[:NUM_WAYPOINTS],
@@ -600,13 +624,31 @@ def main():
                 else:
                     print(f"解析waypoints不足 ({len(waypoints_ego)}个): {output_text[:100]}")
 
-            # 3. 检查路径是否完成或超时
+            # 3. 检查路径是否完成或超时，并记录当前位置
             if path_following:
                 elapsed = time.time() - path_start_time
 
-                # 获取当前状态打印
+                # 获取当前位置
+                pos = client.getMultirotorState(vehicle_name=VEHICLE_NAME).kinematics_estimated.position
+                current_pos = [pos.x_val, pos.y_val, pos.z_val]
+
+                # 每5步记录一次位置（用于可视化）
+                if step % 5 == 0 or elapsed >= args.replan_interval:
+                    # 找到当前应执行的目标点（基于时间进度）
+                    progress = min(1.0, elapsed / args.replan_interval)
+                    target_idx = min(int(progress * len(current_waypoints_world)), len(current_waypoints_world) - 1)
+                    target_pos = list(current_waypoints_world[target_idx]) if current_waypoints_world else current_pos
+
+                    flight_log.append({
+                        "step": step,
+                        "pos": current_pos,
+                        "target": target_pos,
+                        "infer_count": infer_count,
+                        "path_elapsed": elapsed,
+                    })
+
+                # 打印状态
                 if step % 20 == 0:
-                    pos = client.getMultirotorState(vehicle_name=VEHICLE_NAME).kinematics_estimated.position
                     print(f"  [Step {step}] 位置: ({pos.x_val:.1f}, {pos.y_val:.1f}, {-pos.z_val:.1f}), "
                           f"路径耗时: {elapsed:.1f}s")
 
