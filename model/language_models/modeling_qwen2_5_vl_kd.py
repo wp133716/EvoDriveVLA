@@ -583,6 +583,27 @@ class Qwen2_5_VLForConditionalGeneration_KD(Qwen2Base):
             shift_labels = shift_labels.to(shift_logits.device)
             loss = loss_fct(shift_logits, shift_labels)
 
+            # === DEBUG: 检测 base CE loss 异常 ===
+            if torch.isnan(loss) or torch.isinf(loss):
+                _rank = dist.get_rank() if dist.is_initialized() else 0
+                _sample_ids = kwargs.get("id", ["unknown"])
+                _valid = (shift_labels != -100).sum().item()
+                _has_nan_logits = torch.isnan(shift_logits).any().item()
+                _has_inf_logits = torch.isinf(shift_logits).any().item()
+                _logits_max = shift_logits.max().item() if not _has_nan_logits else "NaN"
+                _logits_min = shift_logits.min().item() if not _has_nan_logits else "NaN"
+                print(f"[Rank {_rank}] DEBUG CE loss={loss.item()}, sample_ids={_sample_ids}, valid_tokens={_valid}, "
+                      f"logits_has_nan={_has_nan_logits}, logits_has_inf={_has_inf_logits}, "
+                      f"logits_range=[{_logits_min}, {_logits_max}]")
+                if pixel_values is not None:
+                    print(f"[Rank {_rank}] DEBUG pixel_values: has_nan={torch.isnan(pixel_values).any().item()}, "
+                          f"has_inf={torch.isinf(pixel_values).any().item()}, shape={pixel_values.shape}")
+                if image_embeds is not None:
+                    print(f"[Rank {_rank}] DEBUG image_embeds: has_nan={torch.isnan(image_embeds).any().item()}, "
+                          f"has_inf={torch.isinf(image_embeds).any().item()}, shape={image_embeds.shape}")
+                print(f"[Rank {_rank}] DEBUG inputs_embeds: has_nan={torch.isnan(inputs_embeds).any().item()}, "
+                      f"has_inf={torch.isinf(inputs_embeds).any().item()}")
+
         if self.llm_kd:
             with torch.no_grad():
                 if self.teacher is None:
@@ -771,11 +792,22 @@ class Qwen2_5_VLForConditionalGeneration_KD(Qwen2Base):
                 loss_fct_kd = nn.KLDivLoss(reduction="batchmean")
                 log_softmax_student = F.log_softmax(valid_student_logits / self.logits_loss_temperature, dim=-1)
                 log_softmax_teacher = F.softmax(valid_teacher_logits / self.logits_loss_temperature, dim=-1)
-                
+
                 loss_logits = loss_fct_kd(
                     log_softmax_student,
                     log_softmax_teacher
                 ) * (self.logits_loss_temperature * self.logits_loss_temperature)
+
+                # === DEBUG: 检测 KD logits loss 异常 ===
+                if torch.isnan(loss_logits) or torch.isinf(loss_logits):
+                    _rank = dist.get_rank() if dist.is_initialized() else 0
+                    print(f"[Rank {_rank}] DEBUG logits_loss={loss_logits.item()}, "
+                          f"valid_tokens={valid_student_logits.shape[0]}, "
+                          f"student_logits_nan={torch.isnan(valid_student_logits).any().item()}, "
+                          f"teacher_logits_nan={torch.isnan(valid_teacher_logits).any().item()}, "
+                          f"student_logits_range=[{valid_student_logits.min().item():.4f}, {valid_student_logits.max().item():.4f}], "
+                          f"teacher_logits_range=[{valid_teacher_logits.min().item():.4f}, {valid_teacher_logits.max().item():.4f}]")
+
                 if loss is None:
                     loss = self.logits_loss_weight * loss_logits
                 else:
@@ -795,6 +827,16 @@ class Qwen2_5_VLForConditionalGeneration_KD(Qwen2Base):
                     traj_student_hidden_states,
                     valid_teacher_hidden_states,
                 )
+
+                # === DEBUG: 检测 hidden state loss 异常 ===
+                if torch.isnan(loss_traj) or torch.isinf(loss_traj):
+                    _rank = dist.get_rank() if dist.is_initialized() else 0
+                    print(f"[Rank {_rank}] DEBUG hs_loss={loss_traj.item()}, "
+                          f"student_hs_nan={torch.isnan(traj_student_hidden_states).any().item()}, "
+                          f"teacher_hs_nan={torch.isnan(valid_teacher_hidden_states).any().item()}, "
+                          f"student_hs_range=[{traj_student_hidden_states.min().item():.4f}, {traj_student_hidden_states.max().item():.4f}], "
+                          f"teacher_hs_range=[{valid_teacher_hidden_states.min().item():.4f}, {valid_teacher_hidden_states.max().item():.4f}]")
+
                 if loss is None:
                     loss = self.hs_loss_weight * loss_traj
                 else:
@@ -841,12 +883,31 @@ class Qwen2_5_VLForConditionalGeneration_KD(Qwen2Base):
             )
 
             loss_encoder = loss_kd(kd_embeds, image_embeds)
-            loss_encoder  = (loss_encoder.mean(dim=1)*weight).sum()/weight.sum()
+            loss_encoder  = (loss_encoder.mean(dim=1)*weight).sum()/(weight.sum() + 1e-8)
+
+            # === DEBUG: 检测 encoder KD loss 异常 ===
+            if torch.isnan(loss_encoder) or torch.isinf(loss_encoder):
+                _rank = dist.get_rank() if dist.is_initialized() else 0
+                print(f"[Rank {_rank}] DEBUG encoder_loss={loss_encoder.item()}, "
+                      f"weight_sum={weight.sum().item()}, weight_min={weight.min().item():.6f}, weight_max={weight.max().item():.6f}, "
+                      f"kd_embeds_nan={torch.isnan(kd_embeds).any().item()}, "
+                      f"image_embeds_nan={torch.isnan(image_embeds).any().item()}, "
+                      f"kd_embeds_range=[{kd_embeds.min().item():.4f}, {kd_embeds.max().item():.4f}], "
+                      f"image_embeds_range=[{image_embeds.min().item():.4f}, {image_embeds.max().item():.4f}]")
 
             if loss is None:
                 loss = self.encoder_loss_weight * loss_encoder
             else:
                 loss += self.encoder_loss_weight * loss_encoder
+
+        # NaN loss 保护：用零替代，跳过本 step 的梯度更新，防止模型参数损坏
+        if loss is not None and (torch.isnan(loss) or torch.isinf(loss)):
+            _rank = dist.get_rank() if dist.is_initialized() else 0
+            _sample_ids = kwargs.get("id", ["unknown"])
+            print(f"[Rank {_rank}] WARNING: loss is NaN/Inf, replacing with 0 to skip this step. "
+                  f"sample_ids={_sample_ids}")
+            #loss = torch.zeros_like(loss, requires_grad=True)
+            loss = 0.0 * self.lm_head.weight.sum()
 
         if not return_dict:
             output = (logits,) + outputs[1:]
