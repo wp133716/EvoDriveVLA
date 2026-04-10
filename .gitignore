@@ -5,3 +5,6 @@ data/*.json
 data/*.pkl
 result*
 wandb/
+*.patch
+logs/
+.vscode/
