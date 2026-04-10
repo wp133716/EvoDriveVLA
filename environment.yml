@@ -36,12 +36,13 @@ dependencies:
   - xorg-xorgproto=2024.1
   - xz=5.6.4
   - zlib=1.2.13
+  - libgl1
   - pip:
       - binpacking==2.0.1
       - datasets==3.6.0
       - decord==0.6.0
       - descartes==1.1.0
-      - flash_attn==2.7.2.post1
+      - flash_attn==2.7.2.post1 --no-build-isolation
       - imageio==2.37.0
       - matplotlib==3.5.3
       - mmcv==2.1.0
@@ -60,3 +61,7 @@ dependencies:
       - tiktoken==0.9.0
       - tqdm>=4.65
       - transformers==4.49.0
+      - deepspeed
+      - psutil
+      - accelerate
+      - tensorboardX
