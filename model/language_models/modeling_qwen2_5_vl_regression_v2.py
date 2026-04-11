@@ -105,16 +105,18 @@ class Qwen2_5_VLForRegressionV2(Qwen2_5_VLForConditionalGeneration):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # 1. 调用父类获取 hidden_states
-        outputs = self.model(
+        # 1. 调用父类的完整 forward 来处理视觉输入
+        # 父类会将 pixel_values 转换为 inputs_embeds，然后传给 self.model
+        outputs = super().forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
+            labels=None,  # 不传递 labels，我们自己计算回归 loss
             use_cache=use_cache,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
+            output_hidden_states=True,  # 必须输出 hidden_states
             return_dict=True,
             pixel_values=pixel_values,
             pixel_values_videos=pixel_values_videos,
@@ -122,7 +124,7 @@ class Qwen2_5_VLForRegressionV2(Qwen2_5_VLForConditionalGeneration):
             video_grid_thw=video_grid_thw,
         )
 
-        hidden_states = outputs.last_hidden_state  # [batch, seq_len, hidden]
+        hidden_states = outputs.hidden_states[-1]  # [batch, seq_len, hidden]
 
         # 2. 取最后一个 token 的特征
         trajectory_feature = hidden_states[:, -1, :]  # [batch, hidden]
