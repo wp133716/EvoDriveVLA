@@ -145,7 +145,9 @@ def train():
 
     # 打印可训练参数
     if training_args.local_rank in [-1, 0]:
-        model.model.print_trainable_parameters()
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total_params = sum(p.numel() for p in model.parameters())
+        print(f"trainable params: {trainable_params:,} || all params: {total_params:,} || trainable%: {100 * trainable_params / total_params:.4f}")
 
     # 复用现有数据加载 (唯一改动点2：不需要KD相关)
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
