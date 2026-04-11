@@ -36,7 +36,8 @@ class Qwen2_5_VLForRegressionV2(Qwen2_5_VLForConditionalGeneration):
     回归版本 V2：最小改动，复用父类所有功能
     """
 
-    def __init__(self, config, num_waypoints=6, waypoint_dim=3):
+    def __init__(self, config, num_waypoints=6, waypoint_dim=3,
+                 waypoint_mean=None, waypoint_std=None):
         # 先调用父类初始化
         super().__init__(config)
 
@@ -55,6 +56,14 @@ class Qwen2_5_VLForRegressionV2(Qwen2_5_VLForConditionalGeneration):
 
         # 初始化回归头
         self._init_weights(self.trajectory_head)
+
+        # 归一化参数
+        if waypoint_mean is None:
+            waypoint_mean = [0.0] * waypoint_dim
+        if waypoint_std is None:
+            waypoint_std = [1.0] * waypoint_dim
+        self.register_buffer('waypoint_mean', torch.tensor(waypoint_mean, dtype=torch.float32))
+        self.register_buffer('waypoint_std', torch.tensor(waypoint_std, dtype=torch.float32))
 
     @staticmethod
     def _init_weights(module):
@@ -129,9 +138,12 @@ class Qwen2_5_VLForRegressionV2(Qwen2_5_VLForConditionalGeneration):
         # 2. 取最后一个 token 的特征
         trajectory_feature = hidden_states[:, -1, :]  # [batch, hidden]
 
-        # 3. 回归得到 waypoints
-        waypoints_flat = self.trajectory_head(trajectory_feature)  # [batch, 18]
-        waypoints = waypoints_flat.view(-1, self.num_waypoints, self.waypoint_dim)
+        # 3. 回归得到归一化后的 waypoints
+        normalized_flat = self.trajectory_head(trajectory_feature)  # [batch, 18]
+        normalized_waypoints = normalized_flat.view(-1, self.num_waypoints, self.waypoint_dim)
+
+        # 4. 反归一化得到真实坐标
+        waypoints = normalized_waypoints * self.waypoint_std + self.waypoint_mean
 
         # 4. 计算 loss（如果提供了 labels）
         loss = None
@@ -161,8 +173,13 @@ class Qwen2_5_VLForRegressionV2(Qwen2_5_VLForConditionalGeneration):
                 device=waypoints.device
             ).view(-1, self.num_waypoints, self.waypoint_dim)
 
-            # Smooth L1 loss
-            loss = F.smooth_l1_loss(waypoints, target_tensor, beta=0.1)
+            # 对 target 做归一化
+            target_mean = self.waypoint_mean.view(1, 1, -1)
+            target_std = self.waypoint_std.view(1, 1, -1)
+            normalized_target = (target_tensor - target_mean) / target_std
+
+            # Smooth L1 loss（在归一化后的空间计算）
+            loss = F.smooth_l1_loss(normalized_waypoints, normalized_target, beta=0.1)
 
         if not return_dict:
             return ((loss, waypoints) if loss is not None else (waypoints,))
@@ -170,7 +187,7 @@ class Qwen2_5_VLForRegressionV2(Qwen2_5_VLForConditionalGeneration):
         return Qwen2_5_VLRegressionOutput(
             loss=loss,
             waypoints=waypoints,
-            logits=waypoints_flat,  # 保持兼容
+            logits=normalized_flat,  # 保持兼容
         )
 
     @torch.no_grad()

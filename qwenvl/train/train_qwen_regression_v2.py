@@ -20,6 +20,7 @@ import logging
 import pathlib
 import torch
 import transformers
+import json
 
 project_root = pathlib.Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
@@ -95,6 +96,18 @@ def train():
 
     os.makedirs(training_args.output_dir, exist_ok=True)
 
+    # 读取归一化参数
+    waypoint_mean = None
+    waypoint_std = None
+    if model_args.waypoint_stats_path and os.path.exists(model_args.waypoint_stats_path):
+        print(f"Loading waypoint stats from {model_args.waypoint_stats_path}...")
+        with open(model_args.waypoint_stats_path, 'r') as f:
+            stats = json.load(f)
+        waypoint_mean = stats['global']['mean']
+        waypoint_std = stats['global']['std']
+        print(f"  Mean: {waypoint_mean}")
+        print(f"  Std:  {waypoint_std}")
+
     # 加载回归模型 (唯一改动点1)
     print(f"Loading regression model from {model_args.model_name_or_path}...")
     model = Qwen2_5_VLForRegressionV2.from_pretrained(
@@ -106,6 +119,8 @@ def train():
         device_map={"": training_args.local_rank} if training_args.local_rank != -1 else "auto",
         num_waypoints=6,
         waypoint_dim=3,
+        waypoint_mean=waypoint_mean,
+        waypoint_std=waypoint_std,
     )
 
     # 转为 bf16

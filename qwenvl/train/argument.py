@@ -13,6 +13,10 @@ class ModelArguments:
     teacher_model_name_or_path: Optional[str] = field(default=None)
     train_teacher: bool = field(default=False)
 
+    # 回归模型归一化参数
+    waypoint_stats_path: Optional[str] = field(default=None,
+        metadata={"help": "Path to waypoint stats JSON file for normalization"})
+
 @dataclass
 class DataArguments:
     dataset_use: str = field(default="")
