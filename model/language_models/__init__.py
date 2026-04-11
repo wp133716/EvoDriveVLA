@@ -1,2 +1,3 @@
 from .modeling_qwen2_5_vl import Qwen2_5_VLForConditionalGeneration
 from .modeling_qwen2_5_vl_kd import Qwen2_5_VLForConditionalGeneration_KD
+from .modeling_qwen2_5_vl_regression_v2 import Qwen2_5_VLForRegressionV2
