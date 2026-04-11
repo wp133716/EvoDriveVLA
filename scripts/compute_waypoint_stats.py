@@ -5,8 +5,8 @@
 
 用法:
     python scripts/compute_waypoint_stats.py \
-        --data_path ./data/nuscenes/Drive_KD_train_his_ego.json \
-        --output ./model/language_models/waypoint_stats.json
+        --data_path /path/to/train.json \
+        --output ./waypoint_stats.json
 """
 
 import json
@@ -17,7 +17,8 @@ from pathlib import Path
 
 
 def parse_waypoints_from_text(text):
-    """从文本解析 waypoints"""
+    """从文本解析 waypoints (x, y, z)"""
+    # 匹配 (x, y, z) 格式
     pattern = r"\(([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\)"
     matches = re.findall(pattern, text)
     waypoints = []
@@ -41,19 +42,25 @@ def main():
     with open(args.data_path, 'r') as f:
         data = json.load(f)
 
-    all_waypoints = []  # [N, 6, 3]
+    all_waypoints = []  # [N, 6, 3] - x, y, z
 
     print("Parsing waypoints...")
     for item in data:
-        conversations = item.get("conversations", [])
-        for conv in conversations:
-            if conv.get("from") == "gpt":
-                value = conv.get("value", "")
+        # 支持多种格式: messages (OpenAI) 或 conversations
+        messages = item.get("messages", item.get("conversations", []))
+        for msg in messages:
+            role = msg.get("role", msg.get("from", ""))
+            if role in ["assistant", "gpt"]:
+                value = msg.get("content", msg.get("value", ""))
                 waypoints = parse_waypoints_from_text(value)
                 all_waypoints.append(waypoints)
 
     all_waypoints = np.array(all_waypoints)  # [N, 6, 3]
     print(f"Total samples: {len(all_waypoints)}")
+
+    if len(all_waypoints) == 0:
+        print("Error: No waypoints found!")
+        return
 
     # 统计每个 waypoint 的均值和标准差
     mean = np.mean(all_waypoints, axis=0)  # [6, 3]
