@@ -133,10 +133,21 @@ class Qwen2_5_VLForRegressionV2(Qwen2_5_VLForConditionalGeneration):
             video_grid_thw=video_grid_thw,
         )
 
-        hidden_states = outputs.hidden_states[-1]  # [batch, seq_len, hidden]
+        # outputs.hidden_states 是一个 tuple，包含每一层 Transformer 的输出:
+        # (embedding层, block_1, block_2, ..., block_N)，每项 shape 均为 [batch, seq_len, hidden_dim]
+        # [-1] 取最后一个 Transformer 层的输出，即经过所有层计算后最终的语义表示
+        hidden_states = outputs.hidden_states[-1]  # [batch, seq_len, hidden_dim]
 
         # 2. 取最后一个 token 的特征
-        trajectory_feature = hidden_states[:, -1, :]  # [batch, hidden]
+        # hidden_states[:, -1, :] 含义：
+        #   - [:,  ] → 所有 batch
+        #   - [ ,-1,] → 序列中最后一个 token
+        #   - [  , :] → 该 token 的全部 hidden_dim 特征
+        # 选最后一个 token 的原因：LLM 使用因果注意力（causal attention），
+        # 最后一个 token 在计算时已 attend 到序列中所有前面的 token
+        # （图像 token + 指令 token + 历史对话），因此其 hidden state
+        # 是对整个输入序列最综合、最完整的语义压缩表示
+        trajectory_feature = hidden_states[:, -1, :]  # [batch, hidden_dim]
 
         # 3. 回归得到归一化后的 waypoints
         normalized_flat = self.trajectory_head(trajectory_feature)  # [batch, 18]
