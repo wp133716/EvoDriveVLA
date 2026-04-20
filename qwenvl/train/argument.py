@@ -72,6 +72,13 @@ class TrainingArguments(transformers.TrainingArguments):
     hs_loss: bool = field(default=False)
     hs_loss_weight: float = field(default=0.5)
 
+    # LearnableQ 输出模式
+    use_lm_head: bool = field(
+        default=False,
+        metadata={"help": "True → lm_head + CE loss（18 query tokens，每个预测一个坐标的 vocab token）；"
+                          "False → regression head + Smooth L1（6 query tokens，默认）"}
+    )
+
 @dataclass
 class EvalArguments:
     eval_save_path: str = field(default='')    
