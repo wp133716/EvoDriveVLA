@@ -77,6 +77,10 @@ def train():
     os.makedirs(training_args.output_dir, exist_ok=True)
 
     use_lm_head = getattr(training_args, 'use_lm_head', False)
+    print(
+        f"Trajectory config: num_waypoints={model_args.num_waypoints}, "
+        f"waypoint_dim={model_args.waypoint_dim}"
+    )
     print(f"Loss mode: {'lm_head + CE' if use_lm_head else 'regression head + Smooth L1'}")
 
     # 回归模式才需要归一化参数
@@ -99,8 +103,8 @@ def train():
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
         device_map={"": training_args.local_rank} if training_args.local_rank != -1 else "auto",
-        num_waypoints=6,
-        waypoint_dim=3,
+        num_waypoints=model_args.num_waypoints,
+        waypoint_dim=model_args.waypoint_dim,
         waypoint_mean=waypoint_mean,
         waypoint_std=waypoint_std,
         use_lm_head=use_lm_head,

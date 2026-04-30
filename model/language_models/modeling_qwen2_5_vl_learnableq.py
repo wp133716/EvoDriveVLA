@@ -5,11 +5,12 @@ Qwen2.5-VL Learnable Query 轨迹输出
 
 模式 A — 回归头 (use_lm_head=False，默认)
   num_waypoints 个 query token 拼接到序列末尾，
-  取末尾 num_waypoints 个 hidden states → trajectory_head(Linear) → (bs, 6, 3)。
+  取末尾 num_waypoints 个 hidden states → trajectory_head(Linear)
+  → (bs, num_waypoints, waypoint_dim)。
   损失：Smooth L1（归一化空间）。
 
 模式 B — lm_head + CE (use_lm_head=True)
-  num_waypoints × waypoint_dim = 18 个 query token，
+  num_waypoints × waypoint_dim 个 query token，
   每个 query 独立预测对应坐标值的词表 token。
   损失：交叉熵（直接对词表）。
   优点：无需维护 waypoint_stats，无额外参数（复用 lm_head）。
@@ -18,23 +19,23 @@ Qwen2.5-VL Learnable Query 轨迹输出
 数据流（模式 A）：
   input_ids + pixel_values
     → embed_tokens + visual encoder → inputs_embeds (bs, N, c)
-    → cat(inputs_embeds, traj_queries[6]) → (bs, N+6, c)
+    → cat(inputs_embeds, traj_queries) → (bs, N+num_waypoints, c)
     → Qwen2_5_VLModel backbone
-    → last_hidden[:, -6:, :] (bs, 6, c)
-    → trajectory_head Linear → waypoints (bs, 6, 3)
+    → last_hidden[:, -num_waypoints:, :] (bs, num_waypoints, c)
+    → trajectory_head Linear → waypoints (bs, num_waypoints, waypoint_dim)
 
 数据流（模式 B）：
-  ...同上，但 traj_queries 数量为 18...
-    → last_hidden[:, -18:, :] (bs, 18, c)
-    → lm_head → logits (bs, 18, vocab_size)
-    → argmax → token_ids → decode → waypoints (bs, 6, 3)
+  ...同上，但 traj_queries 数量为 num_waypoints × waypoint_dim...
+    → last_hidden[:, -n_query_tokens:, :] (bs, n_query_tokens, c)
+    → lm_head → logits (bs, n_query_tokens, vocab_size)
+    → argmax → token_ids → decode → waypoints (bs, num_waypoints, waypoint_dim)
 """
 
 import re
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import Qwen2_5_VLForConditionalGeneration
+from .modeling_qwen2_5_vl import Qwen2_5_VLForConditionalGeneration
 from transformers.modeling_outputs import ModelOutput
 from dataclasses import dataclass
 from typing import Optional
@@ -61,7 +62,7 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
 
       [use_lm_head=True]
       无额外参数，复用父类 lm_head
-      n_query_tokens = num_waypoints × waypoint_dim = 18
+      n_query_tokens = num_waypoints × waypoint_dim
     """
 
     def __init__(self, config, num_waypoints=6, waypoint_dim=3,
@@ -73,8 +74,8 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
         self.waypoint_dim = waypoint_dim
         self.use_lm_head = use_lm_head
 
-        # CE 模式：每个坐标分量对应一个独立 query token（共 18 个）
-        # 回归模式：每个 waypoint 对应一个 query token（共 6 个）
+        # CE 模式：每个坐标分量对应一个独立 query token
+        # 回归模式：每个 waypoint 对应一个 query token
         self.n_query_tokens = num_waypoints * waypoint_dim if use_lm_head else num_waypoints
 
         hidden_size = config.hidden_size
@@ -83,7 +84,7 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
         nn.init.normal_(self.traj_queries, std=0.02)
 
         if not use_lm_head:
-            # 回归头：每个 query → (x, y, z) waypoint
+            # 回归头：每个 query → 一个 waypoint
             self.trajectory_head = nn.Linear(hidden_size, waypoint_dim)
             nn.init.normal_(self.trajectory_head.weight, std=0.02)
             nn.init.zeros_(self.trajectory_head.bias)
@@ -101,7 +102,7 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
             )
 
     # ------------------------------------------------------------------
-    # 辅助（CE 模式）：label token ids → 18 个目标词表 id
+    # 辅助（CE 模式）：label token ids → n_query_tokens 个目标词表 id
     # ------------------------------------------------------------------
     def _parse_waypoint_token_ids(self, labels: torch.Tensor) -> torch.Tensor:
         """
@@ -231,19 +232,26 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
     # ------------------------------------------------------------------
     # 辅助：从文本 label 解析 waypoints
     # ------------------------------------------------------------------
-    @staticmethod
-    def parse_waypoints_from_text(text: str):
-        """'[(x,y,z), ...]' → flat list of 18 floats"""
+    def parse_waypoints_from_text(self, text: str):
+        """'[(v1,...,vD), ...]' → flat list of num_waypoints * waypoint_dim floats."""
+        target_len = self.num_waypoints * self.waypoint_dim
         if isinstance(text, str):
-            pattern = r"\(([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\)"
-            matches = re.findall(pattern, text)
+            group_pattern = r"\(([^()]*)\)"
+            number_pattern = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
             waypoints = []
-            for x, y, z in matches[:6]:
-                waypoints.extend([float(x), float(y), float(z)])
-            while len(waypoints) < 18:
+
+            for group in re.findall(group_pattern, text):
+                values = re.findall(number_pattern, group)
+                if len(values) != self.waypoint_dim:
+                    continue
+                waypoints.extend(float(v) for v in values)
+                if len(waypoints) >= target_len:
+                    break
+
+            while len(waypoints) < target_len:
                 waypoints.append(0.0)
-            return waypoints[:18]
-        return [0.0] * 18
+            return waypoints[:target_len]
+        return [0.0] * target_len
 
     # ------------------------------------------------------------------
     # forward
@@ -417,7 +425,7 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
         # ── Step 9: 输出头（按模式分支）────────────────────────────────
         if self.use_lm_head:
             # ── CE 模式 ────────────────────────────────────────────────
-            # traj_hidden: (bs, 18, hidden) → lm_head → (bs, 18, vocab_size)
+            # traj_hidden: (bs, n_query_tokens, hidden) → lm_head → (bs, n_query_tokens, vocab_size)
             head_logits = self.lm_head(traj_hidden)
             if dbg:
                 print(f"[NaN-DBG] CE head_logits: nan={torch.isnan(head_logits).any().item()}"
@@ -425,7 +433,7 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
 
             loss = None
             if labels is not None:
-                target_ids = self._parse_waypoint_token_ids(labels)  # (bs, 18)
+                target_ids = self._parse_waypoint_token_ids(labels)  # (bs, n_query_tokens)
                 if dbg:
                     print(f"[NaN-DBG] CE target_ids: {target_ids[0].tolist()}")
                 loss = F.cross_entropy(
@@ -436,7 +444,7 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
                     print(f"[NaN-DBG] CE loss: {loss.item()}")
 
             # 推理时解码 token → float
-            token_ids = head_logits.argmax(-1)            # (bs, 18)
+            token_ids = head_logits.argmax(-1)            # (bs, n_query_tokens)
             waypoints = self._decode_waypoints_from_token_ids(token_ids)
 
             if not return_dict:
@@ -450,7 +458,7 @@ class Qwen2_5_VLForLearnableQ(Qwen2_5_VLForConditionalGeneration):
 
         else:
             # ── 回归模式 ───────────────────────────────────────────────
-            normalized_waypoints = self.trajectory_head(traj_hidden)  # (bs, 6, 3)
+            normalized_waypoints = self.trajectory_head(traj_hidden)  # (bs, num_waypoints, waypoint_dim)
             if dbg:
                 print(f"[NaN-DBG] normalized_waypoints: nan={torch.isnan(normalized_waypoints).any().item()}"
                       f" values={normalized_waypoints[0].float().tolist()}")

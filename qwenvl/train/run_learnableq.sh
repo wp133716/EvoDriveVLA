@@ -36,9 +36,11 @@ TUNE_MM_MLP=True
 TUNE_MM_VISION=False
 
 # 损失模式
-# False → regression head + Smooth L1（默认，6 query tokens）
-# True  → lm_head + CE（18 query tokens，无需 waypoint_stats）
+# False → regression head + Smooth L1（query tokens = NUM_WAYPOINTS）
+# True  → lm_head + CE（query tokens = NUM_WAYPOINTS * WAYPOINT_DIM，无需 waypoint_stats）
 USE_LM_HEAD=False
+NUM_WAYPOINTS=6
+WAYPOINT_DIM=3
 
 # 帧内双向注意力（Image Chunk Mask）
 # True  → 帧内双向，需配合 attn_implementation=sdpa
@@ -91,6 +93,8 @@ deepspeed --master_port $MASTER_PORT \
   --run_name ${CHECKPOINT} \
   --save_safetensors False \
   --waypoint_stats_path ${waypoint_stats} \
+  --num_waypoints ${NUM_WAYPOINTS} \
+  --waypoint_dim ${WAYPOINT_DIM} \
   --gradient_checkpointing True \
   --use_lm_head $USE_LM_HEAD \
   $([ "$IMAGE_CHUNK_MASK" = "True" ] && echo "--attn_implementation sdpa" || echo "--attn_implementation flash_attention_2") \

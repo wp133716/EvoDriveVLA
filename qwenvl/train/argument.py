@@ -16,6 +16,14 @@ class ModelArguments:
     # 回归模型归一化参数
     waypoint_stats_path: Optional[str] = field(default=None,
         metadata={"help": "Path to waypoint stats JSON file for normalization"})
+    num_waypoints: int = field(
+        default=6,
+        metadata={"help": "Number of future waypoints predicted by the trajectory head"}
+    )
+    waypoint_dim: int = field(
+        default=3,
+        metadata={"help": "Dimension of each waypoint, e.g. 3 for (x, y, z)"}
+    )
 
 @dataclass
 class DataArguments:
