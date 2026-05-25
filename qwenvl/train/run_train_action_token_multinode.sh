@@ -18,6 +18,9 @@ export WANDB_PROJECT="EvoDriveVLA"
 export ALBUMENTATIONS_DISABLE_VERSION_CHECK=1
 export HF_HUB_DISABLE_TELEMETRY=1
 export TOKENIZERS_PARALLELISM=false
+# Use HF mirror; must be propagated to workers via .deepspeed_env (non-interactive
+# SSH does not source .bashrc, so workers won't inherit it otherwise).
+export HF_ENDPOINT=https://hf-mirror.com
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$HOME/.triton}"
 mkdir -p "$TRITON_CACHE_DIR/autotune"
 
@@ -37,7 +40,7 @@ export NCCL_SOCKET_IFNAME=^docker0,lo,virbr0   # bootstrap NIC; exclude virtual 
 #   192.168.1.10 slots=8
 #   192.168.1.11 slots=8
 # The FIRST entry is the master node.
-HOSTFILE="${HOSTFILE:-./train/hostfile}"
+HOSTFILE="${HOSTFILE:-./qwenvl/train/hostfile}"
 # Master node IP (must match the first hostfile entry; NOT localhost).
 export MASTER_ADDR="${MASTER_ADDR:-192.168.81.90}"
 MASTER_PORT=$((10000 + RANDOM % 50000))
