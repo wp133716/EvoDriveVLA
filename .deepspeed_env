@@ -1,5 +1,11 @@
 PATH=/home/admin/wp_workspace/EvoDriveVLA/.venv/bin:/usr/local/cuda/bin:/usr/bin:/bin
 HF_ENDPOINT=https://hf-mirror.com
+WANDB_PROJECT=EvoDriveVLA
+TOKENIZERS_PARALLELISM=false
+HF_HUB_DISABLE_TELEMETRY=1
+ALBUMENTATIONS_DISABLE_VERSION_CHECK=1
+OMP_NUM_THREADS=1
+PYTHONWARNINGS=ignore::DeprecationWarning
 NCCL_IB_DISABLE=0
 NCCL_IB_HCA=mlx5_0
 NCCL_P2P_DISABLE=0
