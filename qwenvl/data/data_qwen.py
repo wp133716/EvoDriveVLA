@@ -160,11 +160,11 @@ def preprocess_qwen_2_visual(
 class LazySupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_args):
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_args, dataset_path=None):
         super(LazySupervisedDataset, self).__init__()
 
         # dataset = data_args.dataset_use.split(",")
-        dataset = data_args.dataset_use
+        dataset = dataset_path if dataset_path is not None else data_args.dataset_use
         dataset_list = [dataset]
         rank0_print(f"Loading datasets: {dataset_list}")
 
@@ -847,14 +847,21 @@ def make_supervised_data_module(
     """Make dataset and collator for supervised fine-tuning."""
     train_dataset = LazySupervisedDataset(tokenizer=tokenizer, data_args=data_args)
 
+    eval_path = getattr(data_args, "eval_dataset_use", "")
+    eval_dataset = None
+    if eval_path:
+        eval_dataset = LazySupervisedDataset(
+            tokenizer=tokenizer, data_args=data_args, dataset_path=eval_path
+        )
+
     if data_args.data_flatten:
         data_collator = FlattenedDataCollatorForSupervisedDataset(tokenizer=tokenizer)
         return dict(
-            train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator
+            train_dataset=train_dataset, eval_dataset=eval_dataset, data_collator=data_collator
         )
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
     return dict(
-        train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator
+        train_dataset=train_dataset, eval_dataset=eval_dataset, data_collator=data_collator
     )
 
 

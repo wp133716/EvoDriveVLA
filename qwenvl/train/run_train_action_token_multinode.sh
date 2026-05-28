@@ -57,7 +57,7 @@ DEFAULT_MAX_TOKEN=8192
 
 NUM_EPOCH=${NUM_EPOCH:-5}
 # Drone action vector: (pixel_dx, pixel_dy, gimbal_pitch, gimbal_yaw, zoom, grid_idx)
-NUM_ACTION_STEPS=${NUM_ACTION_STEPS:-1}
+NUM_ACTION_STEPS=${NUM_ACTION_STEPS:-8}
 ACTION_DIM=${ACTION_DIM:-6}
 ACTION_BINS=${ACTION_BINS:-256}
 
@@ -106,14 +106,16 @@ deepspeed --hostfile=${HOSTFILE} \
   --num_gpus ${NUM_GPUS} \
   --num_nodes ${NUM_NODES} \
   --module qwenvl.train.train_qwen_action_token \
-  --deepspeed ./train/zero2.json \
+  --deepspeed ./train/zero1.json \
   --model_name_or_path ${model} \
   --output_dir ${OUTPUT_DIR} \
   --img_dir $img_dir \
   --num_train_epochs ${NUM_EPOCH} \
   --per_device_train_batch_size ${PER_DEVICE_BATCH} \
   --gradient_accumulation_steps ${GRAD_ACCUM} \
-  --eval_strategy no \
+  --eval_strategy "epoch" \
+  --per_device_eval_batch_size ${PER_DEVICE_BATCH} \
+  --eval_dataset_use $val_data \
   --save_strategy "epoch" \
   --learning_rate ${LEARNING_RATE} \
   --weight_decay 0. \
@@ -132,7 +134,7 @@ deepspeed --hostfile=${HOSTFILE} \
   --report_to wandb \
   --logging_steps 10 \
   --run_name ${CHECKPOINT} \
-  --save_safetensors False \
+  --save_safetensors True \
   --gradient_checkpointing True \
   --bf16 \
   --waypoint_stats_path ${waypoint_stats} \

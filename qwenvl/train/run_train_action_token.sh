@@ -74,7 +74,9 @@ deepspeed --master_port $MASTER_PORT \
   --num_train_epochs ${NUM_EPOCH} \
   --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 1 \
-  --eval_strategy no \
+  --eval_strategy "epoch" \
+  --per_device_eval_batch_size 1 \
+  --eval_dataset_use $val_data \
   --save_strategy "epoch" \
   --learning_rate 2e-5 \
   --weight_decay 0. \
@@ -93,7 +95,7 @@ deepspeed --master_port $MASTER_PORT \
   --report_to wandb \
   --logging_steps 10 \
   --run_name ${CHECKPOINT} \
-  --save_safetensors False \
+  --save_safetensors True \
   --gradient_checkpointing True \
   --bf16 \
   --waypoint_stats_path ${waypoint_stats} \
